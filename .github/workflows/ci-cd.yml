@@ -29,13 +29,10 @@ jobs:
       - name: Build application
         run: npm run build
 
-      # In your .github/workflows/ci-cd.yml
-
       - name: Start test infrastructure (Diagnostic Mode)
         run: |
           echo "Starting all services in detached mode..."
-          # The --no-deps flag for build can speed things up if not needed every time
-          docker compose build --no-deps
+          docker compose build
           docker compose up -d
 
           echo "Waiting for 60 seconds to allow containers to initialize or fail..."
@@ -63,7 +60,6 @@ jobs:
       - name: Run performance smoke tests
         run: |
           # Run k6 with a smaller load for CI.
-          # IMPROVEMENT: Added '--out xk6-influxdb' to stream metrics to Grafana.
           docker compose run --rm \
             -e VUS=50 \
             -e DURATION=30s \
@@ -72,23 +68,18 @@ jobs:
             --summary-export=summary.json
 
       - name: Generate HTML Report
-        # FIX: Use the correct package name 'k6-html-reporter'.
         run: npx k6-html-reporter --json summary.json --output report.html
 
       - name: Post summary to GitHub Job Summary
-        # This step uses jq (pre-installed on GitHub runners) to parse key metrics
-        # and posts them as a markdown table to the job summary for quick insights.
         run: |
           echo "### k6 Performance Test Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Extract key metrics using jq
           VUS_MAX=$(jq '.metrics.vus_max.value' summary.json)
           REQ_RATE=$(jq '.metrics.http_reqs.rate' summary.json | xargs printf "%.2f")
           P95_DURATION=$(jq '.metrics.http_req_duration."p(95)"' summary.json | xargs printf "%.2f")
           ERROR_RATE=$(jq '.metrics.http_req_failed.rate * 100' summary.json | xargs printf "%.2f")
           
-          # Write a markdown table to the job summary
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Max Virtual Users | $VUS_MAX |" >> $GITHUB_STEP_SUMMARY
@@ -97,7 +88,6 @@ jobs:
           echo "| Error Rate | ${ERROR_RATE}% |" >> $GITHUB_STEP_SUMMARY
 
       - name: Archive test results
-        # This step runs even if previous steps fail, ensuring reports are always saved.
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -107,7 +97,6 @@ jobs:
             report.html
 
       - name: Cleanup
-        # Ensure cleanup runs even on failure to stop containers and free up resources.
         if: always()
         run: docker compose down -v
 
@@ -141,4 +130,3 @@ jobs:
           echo "Deploying to production environment..."
           # This is where you would add your deployment commands.
           # For example, using SSH to connect to a server and run 'docker compose pull && docker compose up -d'
-          # ssh user@your-server.com 'cd /path/to/app && docker compose pull && docker compose up -d'
