@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Database, Activity, HardDrive, Cpu, MemoryStick, Wifi, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Server, Activity, HardDrive, Cpu, MemoryStick, Wifi, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 
 const services = [
   { name: 'k6 Load Testing Engine', status: 'running', uptime: '2d 14h 32m', port: 6565 },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Play, Square, Users, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -16,22 +16,22 @@ interface ChartDataPoint {
   errors: number;
 }
 
-export function TestDashboard() {
-  const [isRunning, setIsRunning] = useState(false);
-  const [metrics, setMetrics] = useState<TestMetrics>({
-    responseTime: 0,
-    throughput: 0,
-    errorRate: 0,
-    activeUsers: 0,
-  });
-  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
-  const [testStatus, setTestStatus] = useState<string>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [apiConnected, setApiConnected] = useState<boolean>(false);
-  const [lastUpdate, setLastUpdate] = useState<string>('Never');
+interface K6Metric {
+  // Define the structure of your metric objects
+  // This is an example, adjust it to match your actual data
+  type: string;
+  data: {
+    time: string;
+    value: number;
+    tags: Record<string, string>;
+  };
+}
 
-  // Check API connectivity
-  const checkApiHealth = async () => {
+export function TestDashboard() {
+  // ... (state declarations remain the same) ...
+
+  // 2. Wrap your functions in useCallback to memoize them
+  const checkApiHealth = useCallback(async () => {
     try {
       const response = await fetch('/api/health');
       if (response.ok) {
@@ -49,14 +49,27 @@ export function TestDashboard() {
       console.error('API health check failed:', err);
       return false;
     }
-  };
+  }, []);
 
-  // Fetch real metrics from API
-  const fetchMetrics = async () => {
+  // Fix the 'any' type and wrap in useCallback
+  const processInfluxMetrics = useCallback((influxMetrics: K6Metric[]): TestMetrics => {
+    const responseTimeMetrics = influxMetrics.filter(m => m._measurement === 'http_req_duration');
+    const throughputMetrics = influxMetrics.filter(m => m._measurement === 'http_reqs');
+    const errorMetrics = influxMetrics.filter(m => m._measurement === 'http_req_failed');
+    const userMetrics = influxMetrics.filter(m => m._measurement === 'vus');
+
+    return {
+      responseTime: responseTimeMetrics.length > 0 ? Math.round(responseTimeMetrics[responseTimeMetrics.length - 1].data.value) : 0,
+      throughput: throughputMetrics.length > 0 ? Math.round(throughputMetrics[throughputMetrics.length - 1].data.value) : 0,
+      errorRate: errorMetrics.length > 0 ? (errorMetrics[errorMetrics.length - 1].data.value * 100) : 0,
+      activeUsers: userMetrics.length > 0 ? Math.round(userMetrics[userMetrics.length - 1].data.value) : 0,
+    };
+  }, []);
+
+  const fetchMetrics = useCallback(async () => {
     if (!apiConnected) {
       return;
     }
-
     try {
       const response = await fetch('/api/metrics/summary');
       if (response.ok) {
@@ -64,22 +77,16 @@ export function TestDashboard() {
         setLastUpdate(new Date().toLocaleTimeString());
 
         if (data.metrics && data.metrics.length > 0) {
-          // Process real InfluxDB metrics
           const processedMetrics = processInfluxMetrics(data.metrics);
           setMetrics(processedMetrics);
 
-          // Update chart data with real metrics
           const newDataPoint = {
-            time: new Date().toLocaleTimeString(),
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             responseTime: processedMetrics.responseTime,
             throughput: processedMetrics.throughput,
             errors: Math.round(processedMetrics.errorRate),
           };
-
           setChartData(prev => [...prev.slice(-19), newDataPoint]);
-        } else {
-          // No metrics available yet - show placeholder
-          console.log('No metrics available yet. Run a k6 test to see data.');
         }
       } else {
         setError(`Failed to fetch metrics: ${response.status}`);
@@ -88,42 +95,27 @@ export function TestDashboard() {
       console.error('Failed to fetch metrics:', err);
       setError('Failed to fetch metrics from API');
     }
-  };
+  }, [apiConnected, processInfluxMetrics]);
 
-  // Process InfluxDB metrics into dashboard format
-  const processInfluxMetrics = (influxMetrics: any[]): TestMetrics => {
-    const responseTimeMetrics = influxMetrics.filter(m => m._measurement === 'http_req_duration');
-    const throughputMetrics = influxMetrics.filter(m => m._measurement === 'http_reqs');
-    const errorMetrics = influxMetrics.filter(m => m._measurement === 'http_req_failed');
-    const userMetrics = influxMetrics.filter(m => m._measurement === 'vus');
-
-    return {
-      responseTime: responseTimeMetrics.length > 0 ? Math.round(responseTimeMetrics[responseTimeMetrics.length - 1]._value) : 0,
-      throughput: throughputMetrics.length > 0 ? Math.round(throughputMetrics[throughputMetrics.length - 1]._value) : 0,
-      errorRate: errorMetrics.length > 0 ? (errorMetrics[errorMetrics.length - 1]._value * 100) : 0,
-      activeUsers: userMetrics.length > 0 ? Math.round(userMetrics[userMetrics.length - 1]._value) : 0,
-    };
-  };
-
-  // Check if test is running
-  const checkTestStatus = async () => {
+  const checkTestStatus = useCallback(async () => {
     if (!apiConnected) {
       return;
     }
-
     try {
       const response = await fetch('/api/tests');
       if (response.ok) {
         const data = await response.json();
-        const runningTest = data.tests?.find((test: any) => test.status === 'running');
+        // Fix the 'any' type in the find callback
+        const runningTest = data.tests?.find((test: { status: string }) => test.status === 'running');
         setIsRunning(!!runningTest);
         setTestStatus(runningTest ? 'running' : 'idle');
       }
     } catch (err) {
       console.error('Failed to check test status:', err);
     }
-  };
+  }, [apiConnected]);
 
+  // 3. Correct the useEffect hook
   useEffect(() => {
     // Initial API health check
     checkApiHealth().then((connected) => {
@@ -131,7 +123,20 @@ export function TestDashboard() {
         fetchMetrics();
         checkTestStatus();
       }
-    });
+    }); // <-- FIX: The misplaced array is removed from here
+
+    // Set up polling intervals
+    const healthInterval = setInterval(checkApiHealth, 10000);
+    const metricsInterval = setInterval(fetchMetrics, 5000);
+    const statusInterval = setInterval(checkTestStatus, 3000);
+
+    return () => {
+      clearInterval(healthInterval);
+      clearInterval(metricsInterval);
+      clearInterval(statusInterval);
+    };
+    // Add the memoized functions to the dependency array to satisfy the linter
+  }, [checkApiHealth, fetchMetrics, checkTestStatus]);
 
     // Set up polling intervals
     const healthInterval = setInterval(checkApiHealth, 10000); // Every 10 seconds

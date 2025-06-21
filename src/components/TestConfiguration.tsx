@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, Play, Copy, Trash2, Plus } from 'lucide-react';
+import { Save, Play, Trash2, Plus } from 'lucide-react';
 
 const apiEndpoints = [
   { value: 'jsonplaceholder', label: 'JSONPlaceholder', url: 'https://jsonplaceholder.typicode.com' },
@@ -14,6 +14,21 @@ const testTypes = [
   { value: 'spike', label: 'Spike Test', description: 'Sudden increase in load' },
   { value: 'volume', label: 'Volume Test', description: 'Large amounts of data' },
 ];
+
+interface TestConfig {
+  vus: number;
+  duration: string;
+}
+
+interface TestConfigurationProps {
+  onStartTest: () => void;
+  // BEFORE: Using 'any'
+  // setConfiguration: (config: any) => void;
+  // AFTER: Use the specific type
+  setConfiguration: (config: TestConfig) => void;
+}
+
+
 
 export function TestConfiguration() {
   const [config, setConfig] = useState({
