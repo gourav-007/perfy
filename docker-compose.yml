@@ -78,25 +78,22 @@ services:
   # Test Results API
   test-api:
     build: ./api
-    container_name: test-api
     ports:
       - "8080:8080"
     environment:
-      - NODE_ENV=production
       - INFLUXDB_URL=http://influxdb:8086
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
-    networks:
-      - monitoring
     depends_on:
       influxdb:
         condition: service_healthy
-    restart: unless-stopped
-
-networks:
-  monitoring:
-    driver: bridge
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
 
 volumes:
   influxdb-data:

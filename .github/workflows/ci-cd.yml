@@ -125,12 +125,11 @@ jobs:
       - name: Build and push Docker images
         run: |
           echo "Building and pushing production images..."
-          # Replace 'your-docker-repo' with your actual Docker Hub username or organization
-          docker build -t your-docker-repo/performance-testing-ui:latest .
-          docker build -t your-docker-repo/performance-testing-api:latest ./api
+          docker build -t gouravjain07/performance-testing-ui:latest .
+          docker build -t gouravjain07/performance-testing-api:latest ./api
           
-          docker push your-docker-repo/performance-testing-ui:latest
-          docker push your-docker-repo/performance-testing-api:latest
+          docker push gouravjain07/performance-testing-ui:latest
+          docker push gouravjain07/performance-testing-api:latest
 
       - name: Deploy to production
         run: |
