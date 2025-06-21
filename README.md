@@ -2,6 +2,9 @@
 
 A comprehensive performance testing framework built with k6, InfluxDB, Grafana, and a modern React dashboard for managing and visualizing load tests.
 
+![Grafana Dashboard](grafana.png)
+
+
 ## 🚀 Features
 
 - **Modern Web Interface**: Beautiful React-based dashboard for test management
