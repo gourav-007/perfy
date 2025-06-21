@@ -1,0 +1,138 @@
+name: Performance Testing CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # Install project dependencies and k6-reporter for HTML reports
+        run: npm ci && npm install k6-reporter
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Build application
+        run: npm run build
+
+      - name: Start test infrastructure
+        run: |
+          # Build all required images, including the custom k6 image
+          docker-compose build
+          # Start all services in detached mode
+          docker-compose up -d
+          
+          echo "Waiting for services to become healthy..."
+          # A more robust wait loop instead of a fixed sleep.
+          # It waits for the 'test-api' to be healthy, with a timeout.
+          timeout=120
+          while ! docker-compose ps | grep 'test-api' | grep -q 'healthy'; do
+            if [ $timeout -le 0 ]; then
+              echo "Services did not become healthy in time."
+              docker-compose logs
+              exit 1
+            fi
+            sleep 5
+            timeout=$((timeout - 5))
+          done
+          echo "All services are ready."
+          docker-compose ps
+
+      - name: Run performance smoke tests
+        run: |
+          # Run k6 with a smaller load for CI and export a summary file.
+          # The VUS and DURATION are passed as environment variables to the k6 script.
+          docker-compose run --rm \
+            -e VUS=50 \
+            -e DURATION=30s \
+            k6 run /scripts/load-test.js \
+            --summary-export=summary.json
+
+      - name: Generate HTML Report
+        # Use the k6-reporter tool to convert the JSON summary into an HTML report
+        run: npx k6-reporter --json summary.json --output report.html
+
+      - name: Post summary to GitHub Job Summary
+        # This step uses jq (pre-installed on GitHub runners) to parse key metrics
+        # and posts them as a markdown table to the job summary for quick insights.
+        run: |
+          echo "### k6 Performance Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract key metrics using jq
+          VUS_MAX=$(jq '.metrics.vus_max.value' summary.json)
+          REQ_RATE=$(jq '.metrics.http_reqs.rate' summary.json | xargs printf "%.2f")
+          P95_DURATION=$(jq '.metrics.http_req_duration."p(95)"' summary.json | xargs printf "%.2f")
+          ERROR_RATE=$(jq '.metrics.http_req_failed.rate * 100' summary.json | xargs printf "%.2f")
+          
+          # Write a markdown table to the job summary
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Max Virtual Users | $VUS_MAX |" >> $GITHUB_STEP_SUMMARY
+          echo "| Request Rate | $REQ_RATE reqs/s |" >> $GITHUB_STEP_SUMMARY
+          echo "| P95 Duration | ${P95_DURATION}ms |" >> $GITHUB_STEP_SUMMARY
+          echo "| Error Rate | ${ERROR_RATE}% |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Archive test results
+        # This step runs even if previous steps fail, ensuring reports are always saved.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-results
+          path: |
+            summary.json
+            report.html
+
+      - name: Cleanup
+        # Ensure cleanup runs even on failure to stop containers and free up resources.
+        if: always()
+        run: docker-compose down -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    # Only run the deploy job on pushes to the main branch
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub (or other registry)
+        # In a real scenario, you would use secrets for credentials
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker images
+        run: |
+          echo "Building and pushing production images..."
+          # Replace 'your-docker-repo' with your actual Docker Hub username or organization
+          docker build -t your-docker-repo/performance-testing-ui:latest .
+          docker build -t your-docker-repo/performance-testing-api:latest ./api
+          
+          docker push your-docker-repo/performance-testing-ui:latest
+          docker push your-docker-repo/performance-testing-api:latest
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          # This is where you would add your deployment commands.
+          # For example, using SSH to connect to a server and run 'docker-compose pull && docker-compose up -d'
+          # ssh user@your-server.com 'cd /path/to/app && docker-compose pull && docker-compose up -d'
