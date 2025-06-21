@@ -39,31 +39,30 @@ jobs:
           GRAFANA_ADMIN_USER: admin
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
         run: |
-          echo "Starting all services in detached mode..."
+          echo "Starting all services..."
           docker compose build
           docker compose up -d
 
-          echo "Waiting for 60 seconds to allow containers to initialize or fail..."
-          sleep 60
+          echo "Waiting for services to become healthy..."
+          # This is a more robust wait loop. It gives the stack 2 minutes to become healthy.
+          timeout=120
+          while ! docker compose ps | grep 'test-api' | grep -q 'healthy'; do
+            if [ $timeout -le 0 ]; then
+              echo "Services did not become healthy in time."
+              echo "--- InfluxDB Logs ---"
+              docker compose logs influxdb
+              echo "--- Grafana Logs ---"
+              docker compose logs grafana
+              echo "--- Test API Logs ---"
+              docker compose logs test-api
+              exit 1
+            fi
+            sleep 5
+            timeout=$((timeout - 5))
+          done
 
-          echo "-----------------------------------------------------"
-          echo "Current status of all containers:"
+          echo "All services are ready."
           docker compose ps
-          echo "-----------------------------------------------------"
-
-          echo "Fetching logs from the InfluxDB container..."
-          # The '|| true' ensures this step doesn't fail immediately if the container is already stopped
-          docker compose logs influxdb || true
-          echo "-----------------------------------------------------"
-
-          echo "Checking the health of the test-api..."
-          # This will now fail the build and show us all the logs above
-          if ! docker compose ps | grep 'test-api' | grep -q 'healthy'; then
-            echo "Services did not become healthy. See logs above for details."
-            exit 1
-          fi
-
-          echo "Services appear to be ready."
 
       - name: Run performance smoke tests
         run: |
