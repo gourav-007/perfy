@@ -29,7 +29,15 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Start test infrastructure (Diagnostic Mode)
+      - name: Start test infrastructure
+        env:
+          INFLUXDB_TOKEN: ${{ secrets.INFLUXDB_TOKEN }}
+          INFLUXDB_ORG: performance-testing
+          INFLUXDB_BUCKET: k6-metrics
+          INFLUXDB_USERNAME: admin
+          INFLUXDB_PASSWORD: ${{ secrets.INFLUXDB_PASSWORD }}
+          GRAFANA_ADMIN_USER: admin
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
         run: |
           echo "Starting all services in detached mode..."
           docker compose build
