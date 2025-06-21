@@ -21,10 +21,11 @@ services:
       - monitoring
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
   # Grafana for visualization
   grafana:
