@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         # Install project dependencies and k6-reporter for HTML reports
-        run: npm ci && npm install k6-reporter
+        run: npm ci
 
       - name: Run linter
         run: npm run lint
@@ -106,8 +106,8 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    # Only run the deploy job on pushes to the main branch
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Only run the deploy job on pushes to the master branch
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
     steps:
       - name: Checkout repository
