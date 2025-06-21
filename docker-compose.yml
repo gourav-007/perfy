@@ -50,7 +50,7 @@ services:
       - monitoring
     depends_on:
       influxdb:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
     user: "472"
 
@@ -91,7 +91,7 @@ services:
       - monitoring
     depends_on:
       influxdb:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
 
 networks:

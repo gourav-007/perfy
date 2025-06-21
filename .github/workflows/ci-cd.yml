@@ -29,28 +29,36 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Start test infrastructure
+      # In your .github/workflows/ci-cd.yml
+
+      - name: Start test infrastructure (Diagnostic Mode)
         run: |
-          # Build all required images, including the custom k6 image
-          docker compose build
-          # Start all services in detached mode
+          echo "Starting all services in detached mode..."
+          # The --no-deps flag for build can speed things up if not needed every time
+          docker compose build --no-deps
           docker compose up -d
-          
-          echo "Waiting for services to become healthy..."
-          # A more robust wait loop instead of a fixed sleep.
-          # It waits for the 'test-api' to be healthy, with a timeout.
-          timeout=120
-          while ! docker compose ps | grep 'test-api' | grep -q 'healthy'; do
-            if [ $timeout -le 0 ]; then
-              echo "Services did not become healthy in time."
-              docker compose logs
-              exit 1
-            fi
-            sleep 5
-            timeout=$((timeout - 5))
-          done
-          echo "All services are ready."
+
+          echo "Waiting for 60 seconds to allow containers to initialize or fail..."
+          sleep 60
+
+          echo "-----------------------------------------------------"
+          echo "Current status of all containers:"
           docker compose ps
+          echo "-----------------------------------------------------"
+
+          echo "Fetching logs from the InfluxDB container..."
+          # The '|| true' ensures this step doesn't fail immediately if the container is already stopped
+          docker compose logs influxdb || true
+          echo "-----------------------------------------------------"
+
+          echo "Checking the health of the test-api..."
+          # This will now fail the build and show us all the logs above
+          if ! docker compose ps | grep 'test-api' | grep -q 'healthy'; then
+            echo "Services did not become healthy. See logs above for details."
+            exit 1
+          fi
+
+          echo "Services appear to be ready."
 
       - name: Run performance smoke tests
         run: |
